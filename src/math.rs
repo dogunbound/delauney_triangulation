@@ -1,8 +1,8 @@
-use sfml::system::Vector2f;
+use sfml::system::Vector2;
 
 #[allow(non_snake_case)]
 #[must_use]
-pub fn cosine_rule_solved_for_angle_a(a: f32, b: f32, c: f32) -> f32 {
+pub fn cosine_rule_solved_for_angle_a(a: f64, b: f64, c: f64) -> f64 {
     // a^2 = b^2 + c^2 - 2ab * cos(A) is the law of cosines
     // End formula is: A = arccos((b^2 + c^2 - a^2) / (2bc))
 
@@ -15,7 +15,7 @@ pub fn cosine_rule_solved_for_angle_a(a: f32, b: f32, c: f32) -> f32 {
 }
 
 #[must_use]
-pub fn euclidian_distance(a: Vector2f, b: Vector2f) -> f32 {
+pub fn euclidian_distance(a: Vector2<f64>, b: Vector2<f64>) -> f64 {
     let diff = a - b;
     let squared_distance = diff.x * diff.x + diff.y * diff.y;
     let euclidian_distance = squared_distance.sqrt();
@@ -25,7 +25,7 @@ pub fn euclidian_distance(a: Vector2f, b: Vector2f) -> f32 {
 
 #[allow(non_snake_case)]
 #[must_use]
-pub fn calculate_angles_of_triangle(triangle: [Vector2f; 3]) -> (f32, f32, f32) {
+pub fn calculate_angles_of_triangle(triangle: [Vector2<f64>; 3]) -> (f64, f64, f64) {
     // Vertices of triangle
     let (a, b, c) = (triangle[0], triangle[1], triangle[2]);
     // length of each side
@@ -47,7 +47,7 @@ pub fn calculate_angles_of_triangle(triangle: [Vector2f; 3]) -> (f32, f32, f32) 
 
 #[allow(non_snake_case)]
 #[must_use]
-pub fn circumcenter_of_triangle(triangle: [Vector2f; 3]) -> Vector2f {
+pub fn circumcenter_of_triangle(triangle: [Vector2<f64>; 3]) -> Vector2<f64> {
     // x = (x1 * sin(2A) + x2 * sin(2B) + x3 * sin(2C)) / (sin(2A) + sin(2B) + sin(2C))
     // y = (y1 * sin(2A) + y2 * sin(2B) + y3 * sin(2C)) / (sin(2A) + sin(2B) + sin(2C))
     let (a, b, c) = (triangle[0], triangle[1], triangle[2]);
@@ -57,7 +57,7 @@ pub fn circumcenter_of_triangle(triangle: [Vector2f; 3]) -> Vector2f {
     let (dA, dB, dC) = ((2. * A).sin(), (2. * B).sin(), (2. * C).sin());
 
     let denominator = dA + dB + dC;
-    let numerator = Vector2f::new(
+    let numerator = Vector2::new(
         a.x * dA + b.x * dB + c.x * dC,
         a.y * dA + b.y * dB + c.y * dC,
     );
@@ -68,7 +68,7 @@ pub fn circumcenter_of_triangle(triangle: [Vector2f; 3]) -> Vector2f {
 }
 
 #[must_use]
-pub fn get_edges_from_triangle(triangle: [Vector2f; 3]) -> [(Vector2f, Vector2f); 3] {
+pub fn get_edges_from_triangle(triangle: [Vector2<f64>; 3]) -> [(Vector2<f64>, Vector2<f64>); 3] {
     [
         (triangle[0], triangle[1]),
         (triangle[1], triangle[2]),
@@ -77,7 +77,10 @@ pub fn get_edges_from_triangle(triangle: [Vector2f; 3]) -> [(Vector2f, Vector2f)
 }
 
 #[must_use]
-pub fn edges_are_equal(edge1: (Vector2f, Vector2f), edge2: (Vector2f, Vector2f)) -> bool {
+pub fn edges_are_equal(
+    edge1: (Vector2<f64>, Vector2<f64>),
+    edge2: (Vector2<f64>, Vector2<f64>),
+) -> bool {
     let flipped_edge1 = (edge1.1, edge1.0);
     edge1 == edge2 || flipped_edge1 == edge2
 }

@@ -1,7 +1,7 @@
 use delauney_triangulation::DelauneyTriangulationInformation;
 use sfml::{
     graphics::{Color, RcFont, RcText, RenderStates, RenderTarget, RenderWindow, View},
-    system::Vector2f,
+    system::{Vector2, Vector2f},
     window::{mouse::Button, Event, Key, Style},
 };
 
@@ -97,6 +97,7 @@ fn main() {
                     Key::Escape => {
                         is_animating = false;
                         is_paused = true;
+                        num_of_frames_since_last_calculation = 0;
                         delauney_triangulation_information.reset_delauney_mesh();
                     }
                     Key::F => {
@@ -125,7 +126,7 @@ fn main() {
                 },
                 Event::MouseButtonPressed { button, x, y } => {
                     if button == Button::Left && !is_animating {
-                        vertices.push(Vector2f::new(x as f32, y as f32));
+                        vertices.push(Vector2::new(x as f64, y as f64));
                     }
                 }
                 _ => {}
@@ -141,7 +142,7 @@ fn main() {
         if is_animating {
             delauney_triangulation_information.draw(&mut window);
         } else {
-            utils::display_vertices_as_small_yellow_circles(&mut window, &vertices);
+            utils::display_vertices(&mut window, &vertices, Color::YELLOW);
         }
 
         if !hide_help_text {
@@ -149,7 +150,7 @@ fn main() {
         }
         window.display();
 
-        if !is_paused {
+        if !is_paused && is_animating {
             num_of_frames_since_last_calculation += 1;
         }
     }

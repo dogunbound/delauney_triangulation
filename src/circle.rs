@@ -2,36 +2,36 @@ use sfml::{
     graphics::{
         CircleShape, Color, RenderStates, RenderTarget, RenderWindow, Shape, Transformable,
     },
-    system::Vector2f,
+    system::Vector2,
 };
 
 use crate::math::{circumcenter_of_triangle, euclidian_distance};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Circle {
-    center: Vector2f,
-    radius: f32,
+    center: Vector2<f64>,
+    radius: f64,
 }
 
 impl Circle {
-    pub fn is_point_inside_circle(&self, point: Vector2f) -> bool {
+    pub fn is_point_inside_circle(&self, point: Vector2<f64>) -> bool {
         let euclidian_distance = euclidian_distance(self.center, point);
         euclidian_distance < self.radius
     }
 
     pub fn draw(&self, window: &mut RenderWindow, fill_color: Color, outline_color: Color) {
-        let mut circle = CircleShape::new(self.radius, self.radius as usize);
+        let mut circle = CircleShape::new(self.radius as f32, self.radius as usize);
         circle.set_outline_thickness(1.);
-        circle.set_position(self.center);
-        circle.set_origin(Vector2f::new(self.radius, self.radius));
+        circle.set_position(self.center.as_other());
+        circle.set_origin(Vector2::new(self.radius as f32, self.radius as f32));
         circle.set_fill_color(fill_color);
         circle.set_outline_color(outline_color);
         window.draw_circle_shape(&circle, &RenderStates::default());
     }
 }
 
-impl From<[Vector2f; 3]> for Circle {
-    fn from(triangle: [Vector2f; 3]) -> Self {
+impl From<[Vector2<f64>; 3]> for Circle {
+    fn from(triangle: [Vector2<f64>; 3]) -> Self {
         let (side_a, side_b, side_c) = (
             euclidian_distance(triangle[0], triangle[1]),
             euclidian_distance(triangle[1], triangle[2]),

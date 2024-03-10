@@ -1,6 +1,9 @@
 use sfml::{
-    graphics::{Color, PrimitiveType, RenderStates, RenderTarget, RenderWindow, Vertex},
-    system::Vector2f,
+    graphics::{
+        CircleShape, Color, PrimitiveType, RenderStates, RenderTarget, RenderWindow, Shape,
+        Transformable, Vertex,
+    },
+    system::Vector2,
 };
 
 use crate::{
@@ -9,33 +12,74 @@ use crate::{
     utils::{self, display_triangles},
 };
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum InternalState {
+    #[default]
+    Initial,
+    GetBadTrianglesInMesh(usize),
+    PolygonalHole,
+    RemoveBadTrianglesFromMesh(bool),
+    AddTrianglesFromPolygonEdges,
+}
+
+impl PartialOrd for InternalState {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.to_usize().partial_cmp(&other.to_usize())
+    }
+}
+
+impl InternalState {
+    fn to_usize(&self) -> usize {
+        use InternalState::*;
+        match self {
+            Initial => 0,
+            GetBadTrianglesInMesh(_) => 1,
+            PolygonalHole => 2,
+            RemoveBadTrianglesFromMesh(_) => 3,
+            AddTrianglesFromPolygonEdges => 4,
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct DelauneyTriangulationInformation {
+    state: InternalState,
     current_point_idx: usize,
-    point_list: Vec<Vector2f>,
+    point_list: Vec<Vector2<f64>>,
     triangulation_mesh: Vec<Vertex>,
-    bad_triangles_to_plot: Vec<[Vector2f; 3]>,
-    super_triangle: Option<[Vector2f; 3]>,
+    bad_triangles_to_plot: Vec<[Vector2<f64>; 3]>,
+    good_checked_triangles_to_plot: Vec<[Vector2<f64>; 3]>,
+    super_triangle: Option<[Vector2<f64>; 3]>,
     circumcircles_to_plot: Vec<Circle>,
+    polygon_for_new_triangles: Vec<(Vector2<f64>, Vector2<f64>)>,
 }
 
 impl DelauneyTriangulationInformation {
     pub fn reset_delauney_mesh(&mut self) {
+        self.state = InternalState::Initial;
+        self.current_point_idx = 0;
         self.point_list = Default::default();
         self.triangulation_mesh = Default::default();
         self.bad_triangles_to_plot = Default::default();
-        self.circumcircles_to_plot = Default::default();
-        self.current_point_idx = 0;
+        self.good_checked_triangles_to_plot = Default::default();
         self.super_triangle = Default::default();
+        self.circumcircles_to_plot = Default::default();
+        self.polygon_for_new_triangles = Default::default();
     }
 
-    pub fn set_point_list(&mut self, point_list: Vec<Vector2f>) {
+    fn clear_crap_to_plot(&mut self) {
+        self.bad_triangles_to_plot = Default::default();
+        self.circumcircles_to_plot = Default::default();
+        self.good_checked_triangles_to_plot = Default::default();
+    }
+
+    pub fn set_point_list(&mut self, point_list: Vec<Vector2<f64>>) {
         self.point_list = point_list;
     }
 
     pub fn draw(&self, window: &mut RenderWindow) {
         for circle in &self.circumcircles_to_plot {
-            // circle.draw(window, Color::rgba(255, 215, 0, 50), Color::TRANSPARENT);
+            circle.draw(window, Color::rgba(255, 215, 0, 50), Color::TRANSPARENT);
         }
         window.draw_primitives(
             &self.triangulation_mesh,
@@ -43,26 +87,46 @@ impl DelauneyTriangulationInformation {
             &RenderStates::DEFAULT,
         );
         display_triangles(window, &self.bad_triangles_to_plot, Color::RED);
+        display_triangles(window, &self.good_checked_triangles_to_plot, Color::GREEN);
 
-        utils::display_vertices_as_small_yellow_circles(window, &self.point_list);
+        utils::display_vertices(window, &self.point_list, Color::YELLOW);
+
+        if let Some(current_point) = self.point_list.get(self.current_point_idx) {
+            let mut circle = CircleShape::new(5., 20);
+            circle.set_origin(Vector2::new(circle.radius(), circle.radius()));
+            circle.set_position(current_point.as_other());
+            circle.set_fill_color(Color::CYAN);
+
+            window.draw_circle_shape(&circle, &Default::default());
+        }
     }
 
-    fn add_triangle_to_mesh(&mut self, triangle: [Vector2f; 3]) {
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[0]));
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[1]));
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[1]));
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[2]));
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[2]));
-        self.triangulation_mesh.push(Vertex::with_pos(triangle[0]));
-    }
-
-    fn iter_triangles_in_mesh(&self) -> impl Iterator<Item = [Vector2f; 3]> + '_ {
+    fn add_triangle_to_mesh(&mut self, triangle: [Vector2<f64>; 3]) {
         self.triangulation_mesh
-            .chunks(6)
-            .map(|chunk| [chunk[0].position, chunk[1].position, chunk[3].position])
+            .push(Vertex::with_pos(triangle[0].as_other()));
+        self.triangulation_mesh
+            .push(Vertex::with_pos(triangle[1].as_other()));
+        self.triangulation_mesh
+            .push(Vertex::with_pos(triangle[1].as_other()));
+        self.triangulation_mesh
+            .push(Vertex::with_pos(triangle[2].as_other()));
+        self.triangulation_mesh
+            .push(Vertex::with_pos(triangle[2].as_other()));
+        self.triangulation_mesh
+            .push(Vertex::with_pos(triangle[0].as_other()));
     }
 
-    fn remove_triangle_from_mesh(&mut self, triangle: [Vector2f; 3]) {
+    fn iter_triangles_in_mesh(&self) -> impl Iterator<Item = [Vector2<f64>; 3]> + '_ {
+        self.triangulation_mesh.chunks(6).map(|chunk| {
+            [
+                chunk[0].position.as_other(),
+                chunk[1].position.as_other(),
+                chunk[3].position.as_other(),
+            ]
+        })
+    }
+
+    fn remove_triangle_from_mesh(&mut self, triangle: [Vector2<f64>; 3]) {
         let mut removal_index = Default::default();
         for (idx, mesh_triangle) in self.iter_triangles_in_mesh().enumerate() {
             if mesh_triangle == triangle {
@@ -80,7 +144,7 @@ impl DelauneyTriangulationInformation {
 /// Delauney algorithm calculations
 impl DelauneyTriangulationInformation {
     fn add_super_triangle(&mut self) {
-        let mut max = Vector2f::default();
+        let mut max = Vector2::default();
         for point in &self.point_list {
             if point.x > max.x {
                 max.x = point.x;
@@ -93,9 +157,9 @@ impl DelauneyTriangulationInformation {
         max.y *= 2.;
 
         let super_triangle = [
-            Vector2f::new(-1., -1.),
-            Vector2f::new(max.x + 3., -1.),
-            Vector2f::new(-1., max.y + 3.),
+            Vector2::new(-1., -1.),
+            Vector2::new(max.x + 3., -1.),
+            Vector2::new(-1., max.y + 3.),
         ];
         self.super_triangle = Some(super_triangle);
         self.add_triangle_to_mesh(super_triangle);
@@ -124,25 +188,51 @@ impl DelauneyTriangulationInformation {
     }
 
     fn get_all_bad_triangles_in_mesh_and_circumcircles_checked(
-        &self,
-        point: Vector2f,
-    ) -> (Vec<[Vector2f; 3]>, Vec<Circle>) {
+        &mut self,
+        point: Vector2<f64>,
+    ) -> Vec<[Vector2<f64>; 3]> {
         let mut bad_triangles = vec![];
-        let mut circumcircles = vec![];
+        let mut crap_to_plot = None;
+        let mut is_last_triangle_a_bad_triangle = false;
 
-        for triangle in self.iter_triangles_in_mesh() {
+        for (idx, triangle) in self.iter_triangles_in_mesh().enumerate() {
             let circumcircle = Circle::from(triangle);
-
-            if circumcircle.is_point_inside_circle(point) {
-                circumcircles.push(circumcircle);
+            is_last_triangle_a_bad_triangle = circumcircle.is_point_inside_circle(point);
+            if is_last_triangle_a_bad_triangle {
                 bad_triangles.push(triangle);
+            }
+
+            if let InternalState::GetBadTrianglesInMesh(current_idx) = self.state {
+                if idx > current_idx {
+                    crap_to_plot = Some((triangle, circumcircle));
+                    break;
+                }
             }
         }
 
-        (bad_triangles, circumcircles)
+        if let Some((triangle, circumcircle)) = crap_to_plot {
+            self.circumcircles_to_plot.push(circumcircle);
+            if is_last_triangle_a_bad_triangle {
+                self.bad_triangles_to_plot.push(triangle);
+            } else {
+                self.good_checked_triangles_to_plot.push(triangle);
+            }
+            if let InternalState::GetBadTrianglesInMesh(current_idx) = &mut self.state {
+                *current_idx += 1;
+            }
+            return bad_triangles;
+        }
+
+        if self.state < InternalState::PolygonalHole {
+            self.state = InternalState::PolygonalHole;
+        }
+
+        bad_triangles
     }
 
-    fn polygonal_hole_boundary(bad_triangles: &[[Vector2f; 3]]) -> Vec<(Vector2f, Vector2f)> {
+    fn polygonal_hole_boundary(
+        bad_triangles: &[[Vector2<f64>; 3]],
+    ) -> Vec<(Vector2<f64>, Vector2<f64>)> {
         let mut polygon = vec![];
         for (idx, triangle) in bad_triangles.iter().enumerate() {
             let triangle_edges = get_edges_from_triangle(*triangle);
@@ -178,16 +268,26 @@ impl DelauneyTriangulationInformation {
         polygon
     }
 
-    pub fn remove_all_bad_triangles_from_mesh(&mut self, bad_triangles: &[[Vector2f; 3]]) {
+    pub fn remove_all_bad_triangles_from_mesh(&mut self, bad_triangles: &[[Vector2<f64>; 3]]) {
+        if let InternalState::RemoveBadTrianglesFromMesh(ran_through_removal_once) = self.state {
+            if !ran_through_removal_once {
+                self.state = InternalState::RemoveBadTrianglesFromMesh(true);
+            } else {
+                self.state = InternalState::AddTrianglesFromPolygonEdges;
+                return;
+            }
+        }
         for triangle in bad_triangles {
             self.remove_triangle_from_mesh(*triangle);
         }
+
+        self.state = InternalState::RemoveBadTrianglesFromMesh(true);
     }
 
     pub fn add_triangles_from_polygon_edges(
         &mut self,
-        polygon: &[(Vector2f, Vector2f)],
-        point: Vector2f,
+        polygon: &[(Vector2<f64>, Vector2<f64>)],
+        point: Vector2<f64>,
     ) {
         for edge in polygon {
             let new_triangle = [point, edge.0, edge.1];
@@ -222,8 +322,11 @@ impl DelauneyTriangulationInformation {
     ///             remove triangle from triangulation
     ///     return triangulation    
     pub fn update_triangulation(&mut self) {
-        if self.triangulation_mesh.is_empty() {
+        self.clear_crap_to_plot();
+
+        if self.state == InternalState::Initial {
             self.add_super_triangle();
+            self.state = InternalState::GetBadTrianglesInMesh(0);
             return;
         }
 
@@ -234,14 +337,20 @@ impl DelauneyTriangulationInformation {
             return;
         };
         let point = *point; // added this line to deref `point` and make it no longer linked to point list
-        self.current_point_idx += 1;
-        let (bad_triangles, circumcircles) =
-            self.get_all_bad_triangles_in_mesh_and_circumcircles_checked(point);
+        let bad_triangles = self.get_all_bad_triangles_in_mesh_and_circumcircles_checked(point);
+        if self.state < InternalState::PolygonalHole {
+            return;
+        }
         let polygon = Self::polygonal_hole_boundary(&bad_triangles);
         self.remove_all_bad_triangles_from_mesh(&bad_triangles);
+        if self.state <= InternalState::RemoveBadTrianglesFromMesh(true) {
+            self.polygon_for_new_triangles = polygon;
+            return;
+        }
+        let polygon = self.polygon_for_new_triangles.clone();
         self.add_triangles_from_polygon_edges(&polygon, point);
+        self.current_point_idx += 1;
 
-        self.bad_triangles_to_plot = bad_triangles;
-        self.circumcircles_to_plot = circumcircles;
+        self.state = InternalState::GetBadTrianglesInMesh(0);
     }
 }
