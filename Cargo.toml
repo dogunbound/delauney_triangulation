@@ -1,0 +1,8 @@
+[package]
+name = "delauney-triangulation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sfml = "0.21.0"
+
